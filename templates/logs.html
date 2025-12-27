@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+
+{% block title %}日志查看 - Bedrock Server Manager{% endblock %}
+
+{% block extra_css %}
+<style>
+    .log-container {
+        background-color: #1e1e1e;
+        color: #d4d4d4;
+        font-family: 'Courier New', monospace;
+        font-size: 0.85rem;
+        padding: 1rem;
+        border-radius: 0.25rem;
+        max-height: 70vh;
+        overflow-y: auto;
+        line-height: 1.4;
+    }
+    .log-line {
+        margin-bottom: 0.1rem;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        padding: 0.1rem 0;
+    }
+    .log-error {
+        color: #f48771;
+    }
+    .log-warning {
+        color: #dcdcaa;
+    }
+    .log-info {
+        color: #4ec9b0;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>服务器日志</h1>
+    <div>
+        <button class="btn btn-secondary" onclick="clearLogs()">清空显示</button>
+        <button class="btn btn-primary" onclick="toggleAutoScroll()">
+            <span id="autoScrollText">自动滚动: 开启</span>
+        </button>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <div class="mb-3">
+            <div class="input-group">
+                <input type="text" class="form-control" id="searchInput" placeholder="搜索日志...">
+                <button class="btn btn-outline-secondary" onclick="searchLogs()">搜索</button>
+                <button class="btn btn-outline-secondary" onclick="loadLogs()">刷新</button>
+            </div>
+        </div>
+        <div class="log-container" id="logContainer">
+            <div class="text-muted">加载日志...</div>
+        </div>
+    </div>
+</div>
+
+<script>
+let autoScroll = true;
+let eventSource = null;
+
+function formatLogLine(line) {
+    const trimmed = line.trim();
+    if (!trimmed) return '';
+    
+    let className = 'log-info';
+    if (trimmed.toUpperCase().includes('ERROR') || trimmed.toUpperCase().includes('错误')) {
+        className = 'log-error';
+    } else if (trimmed.toUpperCase().includes('WARN') || trimmed.toUpperCase().includes('警告')) {
+        className = 'log-warning';
+    }
+    
+    return `<div class="log-line ${className}">${escapeHtml(trimmed)}</div>`;
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function addLogLine(line) {
+    const container = document.getElementById('logContainer');
+    const formatted = formatLogLine(line);
+    if (formatted) {
+        container.innerHTML += formatted;
+        
+        if (autoScroll) {
+            container.scrollTop = container.scrollHeight;
+        }
+    }
+}
+
+function loadLogs() {
+    $.get('/api/logs?lines=100', function(data) {
+        const container = document.getElementById('logContainer');
+        container.innerHTML = data.logs.map(formatLogLine).join('');
+        
+        if (autoScroll) {
+            container.scrollTop = container.scrollHeight;
+        }
+    });
+}
+
+function searchLogs() {
+    const query = $('#searchInput').val();
+    if (!query) {
+        loadLogs();
+        return;
+    }
+    
+    $.get(`/api/logs/search?q=${encodeURIComponent(query)}&lines=1000`, function(data) {
+        const container = document.getElementById('logContainer');
+        container.innerHTML = data.logs.map(formatLogLine).join('');
+        
+        if (autoScroll) {
+            container.scrollTop = 0;
+        }
+    });
+}
+
+function clearLogs() {
+    document.getElementById('logContainer').innerHTML = '';
+}
+
+function toggleAutoScroll() {
+    autoScroll = !autoScroll;
+    document.getElementById('autoScrollText').textContent = `自动滚动: ${autoScroll ? '开启' : '关闭'}`;
+}
+
+function startLogStream() {
+    if (eventSource) {
+        eventSource.close();
+    }
+    
+    eventSource = new EventSource('/api/logs/stream');
+    
+    eventSource.onmessage = function(event) {
+        addLogLine(event.data);
+    };
+    
+    eventSource.onerror = function(event) {
+        console.error('SSE error:', event);
+        // 重新连接
+        setTimeout(startLogStream, 3000);
+    };
+}
+
+$(document).ready(function() {
+    loadLogs();
+    startLogStream();
+    
+    $('#searchInput').on('keypress', function(e) {
+        if (e.which === 13) {
+            searchLogs();
+        }
+    });
+    
+    // 页面卸载时关闭SSE连接
+    $(window).on('beforeunload', function() {
+        if (eventSource) {
+            eventSource.close();
+        }
+    });
+});
+</script>
+{% endblock %}
+

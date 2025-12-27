@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block title %}服务器控制 - Bedrock Server Manager{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>服务器控制</h1>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">服务器状态</h5>
+                <div id="server-status-detail">
+                    <p class="text-muted">加载中...</p>
+                </div>
+                <div class="mt-3">
+                    <button class="btn btn-success me-2" onclick="startServer()">启动服务器</button>
+                    <button class="btn btn-danger me-2" onclick="stopServer()">停止服务器</button>
+                    <button class="btn btn-warning" onclick="restartServer()">重启服务器</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">服务器信息</h5>
+                <div id="server-info">
+                    <p class="text-muted">加载中...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function updateServerStatus() {
+    $.get('/api/server/status', function(data) {
+        let statusHtml = '';
+        if (data.running) {
+            statusHtml = `
+                <div class="mb-3">
+                    <span class="badge bg-success fs-6">运行中</span>
+                </div>
+                <div class="small">
+                    <p class="mb-1"><strong>进程ID:</strong> ${data.pid}</p>
+                    <p class="mb-1"><strong>CPU使用率:</strong> ${data.cpu_percent?.toFixed(1) || 'N/A'}%</p>
+                    <p class="mb-1"><strong>内存使用:</strong> ${data.memory_mb?.toFixed(1) || 'N/A'} MB</p>
+                </div>
+            `;
+        } else {
+            statusHtml = `
+                <div class="mb-3">
+                    <span class="badge bg-danger fs-6">已停止</span>
+                </div>
+            `;
+        }
+        $('#server-status-detail').html(statusHtml);
+        
+        // 更新服务器信息
+        const infoHtml = `
+            <div class="small">
+                <p class="mb-1"><strong>服务器目录:</strong> ${data.running ? '运行中' : '未运行'}</p>
+                <p class="mb-1"><strong>状态:</strong> ${data.status}</p>
+            </div>
+        `;
+        $('#server-info').html(infoHtml);
+    });
+}
+
+function startServer() {
+    if (!confirm('确定要启动服务器吗？')) return;
+    
+    $.post('/api/server/start', function(data) {
+        if (data.success) {
+            alert(data.message);
+            setTimeout(updateServerStatus, 1000);
+        } else {
+            alert('启动失败: ' + data.message);
+        }
+    });
+}
+
+function stopServer() {
+    if (!confirm('确定要停止服务器吗？')) return;
+    
+    $.post('/api/server/stop', function(data) {
+        if (data.success) {
+            alert(data.message);
+            setTimeout(updateServerStatus, 1000);
+        } else {
+            alert('停止失败: ' + data.message);
+        }
+    });
+}
+
+function restartServer() {
+    if (!confirm('确定要重启服务器吗？这将停止当前服务器并重新启动。')) return;
+    
+    $.post('/api/server/restart', function(data) {
+        if (data.success) {
+            alert(data.message);
+            setTimeout(updateServerStatus, 2000);
+        } else {
+            alert('重启失败: ' + data.message);
+        }
+    });
+}
+
+$(document).ready(function() {
+    updateServerStatus();
+    setInterval(updateServerStatus, 5000); // 每5秒更新一次
+});
+</script>
+{% endblock %}
+

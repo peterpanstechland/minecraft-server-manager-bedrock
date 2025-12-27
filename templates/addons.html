@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+
+{% block title %}Addon管理 - Bedrock Server Manager{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>Addon管理</h1>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#uploadModal">
+        <i class="bi bi-upload"></i> 上传Addon
+    </button>
+</div>
+
+<!-- 上传Modal -->
+<div class="modal fade" id="uploadModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">上传Addon</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <ul class="nav nav-tabs" id="uploadTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#fileUpload">文件上传</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#curseforgeUpload">CurseForge</button>
+                    </li>
+                </ul>
+                <div class="tab-content mt-3">
+                    <div class="tab-pane fade show active" id="fileUpload">
+                        <form id="uploadForm" enctype="multipart/form-data">
+                            <div class="mb-3">
+                                <label for="addonFile" class="form-label">选择文件 (.mcpack 或 .zip)</label>
+                                <input type="file" class="form-control" id="addonFile" name="file" accept=".mcpack,.zip" required>
+                            </div>
+                            <button type="submit" class="btn btn-primary">上传</button>
+                        </form>
+                    </div>
+                    <div class="tab-pane fade" id="curseforgeUpload">
+                        <form id="curseforgeForm">
+                            <div class="mb-3">
+                                <label for="curseforgeUrl" class="form-label">CurseForge URL 或项目ID</label>
+                                <input type="text" class="form-control" id="curseforgeUrl" placeholder="https://www.curseforge.com/..." required>
+                            </div>
+                            <button type="submit" class="btn btn-primary">下载并安装</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Addon列表 -->
+<div class="card">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>名称</th>
+                        <th>类型</th>
+                        <th>版本</th>
+                        <th>状态</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="addonTableBody">
+                    <tr>
+                        <td colspan="5" class="text-center">加载中...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+let addons = [];
+
+function loadAddons() {
+    $.get('/api/addons', function(data) {
+        addons = data;
+        renderAddons();
+    });
+}
+
+function renderAddons() {
+    const tbody = $('#addonTableBody');
+    if (addons.length === 0) {
+        tbody.html('<tr><td colspan="5" class="text-center">暂无Addon</td></tr>');
+        return;
+    }
+    
+    tbody.html(addons.map(addon => `
+        <tr>
+            <td>${addon.name}</td>
+            <td><span class="badge ${addon.type === 'behavior' ? 'bg-primary' : 'bg-info'}">${addon.type === 'behavior' ? '行为包' : '资源包'}</span></td>
+            <td>${addon.version || 'N/A'}</td>
+            <td>
+                ${addon.enabled ? '<span class="badge bg-success">已启用</span>' : '<span class="badge bg-secondary">已禁用</span>'}
+            </td>
+            <td>
+                <div class="btn-group btn-group-sm">
+                    ${addon.enabled 
+                        ? `<button class="btn btn-warning" onclick="toggleAddon(${addon.id}, false)">禁用</button>`
+                        : `<button class="btn btn-success" onclick="toggleAddon(${addon.id}, true)">启用</button>`
+                    }
+                    ${addon.curseforge_id ? `<button class="btn btn-info" onclick="checkUpdate(${addon.id})">检查更新</button>` : ''}
+                    <button class="btn btn-danger" onclick="deleteAddon(${addon.id})">删除</button>
+                </div>
+            </td>
+        </tr>
+    `).join(''));
+}
+
+function toggleAddon(id, enable) {
+    const action = enable ? 'enable' : 'disable';
+    $.ajax({
+        url: `/api/addons/${id}/${action}`,
+        method: 'PUT',
+        success: function(data) {
+            if (data.success) {
+                alert(data.message);
+                loadAddons();
+            } else {
+                alert('操作失败: ' + data.message);
+            }
+        }
+    });
+}
+
+function checkUpdate(id) {
+    if (!confirm('确定要检查更新吗？')) return;
+    
+    $.post(`/api/addons/${id}/update`, function(data) {
+        if (data.success) {
+            if (data.update_info) {
+                alert(`发现新版本: ${data.update_info.latest_version}\n正在更新...`);
+            } else {
+                alert('已是最新版本');
+            }
+            loadAddons();
+        } else {
+            alert('检查更新失败: ' + data.message);
+        }
+    });
+}
+
+function deleteAddon(id) {
+    if (!confirm('确定要删除这个Addon吗？')) return;
+    
+    $.ajax({
+        url: `/api/addons/${id}`,
+        method: 'DELETE',
+        success: function(data) {
+            if (data.success) {
+                alert(data.message);
+                loadAddons();
+            } else {
+                alert('删除失败: ' + data.message);
+            }
+        }
+    });
+}
+
+$('#uploadForm').on('submit', function(e) {
+    e.preventDefault();
+    const formData = new FormData();
+    formData.append('file', $('#addonFile')[0].files[0]);
+    
+    $.ajax({
+        url: '/api/addons/upload',
+        method: 'POST',
+        data: formData,
+        processData: false,
+        contentType: false,
+        success: function(data) {
+            if (data.success) {
+                alert('上传成功！');
+                $('#uploadModal').modal('hide');
+                $('#uploadForm')[0].reset();
+                loadAddons();
+            } else {
+                alert('上传失败: ' + data.message);
+            }
+        }
+    });
+});
+
+$('#curseforgeForm').on('submit', function(e) {
+    e.preventDefault();
+    const url = $('#curseforgeUrl').val();
+    
+    $.ajax({
+        url: '/api/addons/install',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({url: url}),
+        success: function(data) {
+            if (data.success) {
+                alert('安装成功！');
+                $('#uploadModal').modal('hide');
+                $('#curseforgeForm')[0].reset();
+                loadAddons();
+            } else {
+                alert('安装失败: ' + data.message);
+            }
+        }
+    });
+});
+
+$(document).ready(function() {
+    loadAddons();
+});
+</script>
+{% endblock %}
+

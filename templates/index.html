@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}首页 - Bedrock Server Manager{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>服务器概览</h1>
+</div>
+
+<div class="row">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">服务器状态</h5>
+                <div id="server-status">
+                    <p class="text-muted">加载中...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Addon统计</h5>
+                <div id="addon-stats">
+                    <p class="text-muted">加载中...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">快速操作</h5>
+                <div class="d-grid gap-2">
+                    <a href="/addons" class="btn btn-primary">管理Addon</a>
+                    <a href="/server" class="btn btn-secondary">服务器控制</a>
+                    <a href="/logs" class="btn btn-info">查看日志</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+$(document).ready(function() {
+    // 加载服务器状态
+    $.get('/api/server/status', function(data) {
+        let statusHtml = '';
+        if (data.running) {
+            statusHtml = `
+                <p class="mb-1"><span class="badge bg-success">运行中</span></p>
+                <small class="text-muted">PID: ${data.pid}</small><br>
+                <small class="text-muted">CPU: ${data.cpu_percent?.toFixed(1) || 'N/A'}%</small><br>
+                <small class="text-muted">内存: ${data.memory_mb?.toFixed(1) || 'N/A'} MB</small>
+            `;
+        } else {
+            statusHtml = '<p class="mb-0"><span class="badge bg-danger">已停止</span></p>';
+        }
+        $('#server-status').html(statusHtml);
+    });
+    
+    // 加载Addon统计
+    $.get('/api/addons', function(data) {
+        const total = data.length;
+        const enabled = data.filter(a => a.enabled).length;
+        const behavior = data.filter(a => a.type === 'behavior').length;
+        const resource = data.filter(a => a.type === 'resource').length;
+        
+        $('#addon-stats').html(`
+            <p class="mb-1">总计: <strong>${total}</strong></p>
+            <p class="mb-1">已启用: <strong>${enabled}</strong></p>
+            <p class="mb-1">行为包: <strong>${behavior}</strong></p>
+            <p class="mb-0">资源包: <strong>${resource}</strong></p>
+        `);
+    });
+});
+</script>
+{% endblock %}
+
