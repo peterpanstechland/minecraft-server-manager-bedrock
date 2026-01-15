@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{% block title %}Bedrock Server Manager{% endblock %}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
@@ -80,6 +81,11 @@
                             </a>
                         </li>
                         <li class="nav-item">
+                            <a class="nav-link" id="nav-players" href="/players">
+                                <i class="bi bi-people-fill"></i> 玩家管理
+                            </a>
+                        </li>
+                        <li class="nav-item">
                             <a class="nav-link" id="nav-logs" href="/logs">
                                 <i class="bi bi-file-text"></i> 日志查看
                             </a>
@@ -92,9 +98,18 @@
             </main>
         </div>
     </div>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        // 设置CSRF token用于所有AJAX请求
+        $.ajaxSetup({
+            beforeSend: function(xhr, settings) {
+                if (!/^(GET|HEAD|OPTIONS|TRACE)$/i.test(settings.type) && !this.crossDomain) {
+                    xhr.setRequestHeader("X-CSRFToken", $('meta[name="csrf-token"]').attr('content'));
+                }
+            }
+        });
+        
         // 高亮当前导航项
         $(document).ready(function() {
             const path = window.location.pathname;
@@ -105,6 +120,8 @@
                 $('#nav-addons').addClass('active');
             } else if (path.startsWith('/server')) {
                 $('#nav-server').addClass('active');
+            } else if (path.startsWith('/players')) {
+                $('#nav-players').addClass('active');
             } else if (path.startsWith('/logs')) {
                 $('#nav-logs').addClass('active');
             }

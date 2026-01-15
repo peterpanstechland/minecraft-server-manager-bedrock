@@ -4,59 +4,60 @@ __pycache__/
 *$py.class
 *.so
 .Python
-env/
 venv/
+env/
 ENV/
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
 *.egg-info/
-.installed.cfg
-*.egg
+dist/
+build/
 
-# Flask
-instance/
-.webassets-cache
-
-# Database
+# 数据库
 *.db
 *.sqlite
-*.sqlite3
 database/*.db
+database/*.sqlite
+
+# 日志
+*.log
+app.log
+*.log.*
+
+# 上传文件
+static/uploads/
+*.zip
+*.mcpack
+*.mcaddon
+
+# 环境变量
+.env
+.env.local
+.env.*.local
 
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
-*~
+*.sublime-project
+*.sublime-workspace
 
-# OS
+# 系统文件
 .DS_Store
 Thumbs.db
-
-# Uploads
-static/uploads/*
-!static/uploads/.gitkeep
-
-# Logs
-*.log
-
-# Environment
-.env
-.env.local
-
-# Temporary files
-*.tmp
 *.bak
 *.backup
 
+# 临时文件
+*.tmp
+*.temp
+/tmp/
+*.pid
+
+# 测试覆盖率
+.coverage
+htmlcov/
+.pytest_cache/
+
+# 文档构建
+docs/_build/
+docs/.doctrees/

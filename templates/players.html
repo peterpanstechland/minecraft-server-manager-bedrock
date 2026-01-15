@@ -1,0 +1,478 @@
+{% extends "base.html" %}
+
+{% block title %}玩家管理 - Bedrock Server Manager{% endblock %}
+
+{% block extra_css %}
+<style>
+    .player-card {
+        transition: all 0.3s ease;
+        border-left: 4px solid #198754;
+    }
+    .player-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    .player-avatar {
+        width: 48px;
+        height: 48px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-weight: bold;
+        font-size: 1.2rem;
+    }
+    .player-name {
+        font-weight: 600;
+        color: #2c3e50;
+    }
+    .player-info {
+        font-size: 0.85rem;
+        color: #6c757d;
+    }
+    .invincible-badge {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        color: white;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+    .toggle-invincible {
+        cursor: pointer;
+    }
+    .toggle-invincible.active {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        border: none;
+    }
+    .btn-kick {
+        background: linear-gradient(135deg, #ff6b6b 0%, #ee5a5a 100%);
+        border: none;
+        color: white;
+    }
+    .btn-kick:hover {
+        background: linear-gradient(135deg, #ee5a5a 0%, #dc4545 100%);
+        color: white;
+    }
+    .empty-state {
+        text-align: center;
+        padding: 3rem;
+        color: #6c757d;
+    }
+    .empty-state i {
+        font-size: 4rem;
+        margin-bottom: 1rem;
+        opacity: 0.5;
+    }
+    .setup-alert {
+        background: linear-gradient(135deg, #fff3cd 0%, #ffeeba 100%);
+        border: 1px solid #ffc107;
+        border-radius: 8px;
+        padding: 1.5rem;
+    }
+    .refresh-btn {
+        transition: transform 0.3s ease;
+    }
+    .refresh-btn.spinning {
+        animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
+    .command-input {
+        font-family: 'Courier New', monospace;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1><i class="bi bi-people-fill me-2"></i>玩家管理</h1>
+    <div>
+        <button class="btn btn-outline-primary me-2" onclick="refreshPlayers()">
+            <i class="bi bi-arrow-clockwise refresh-btn" id="refresh-icon"></i> 刷新
+        </button>
+        <button class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#commandModal">
+            <i class="bi bi-terminal"></i> 发送命令
+        </button>
+    </div>
+</div>
+
+<!-- 设置提示 -->
+<div id="setup-alert" class="setup-alert mb-4" style="display: none;">
+    <div class="d-flex align-items-start">
+        <i class="bi bi-exclamation-triangle-fill text-warning me-3" style="font-size: 1.5rem;"></i>
+        <div>
+            <h5 class="mb-2">需要配置Screen会话</h5>
+            <p class="mb-2">要使用玩家管理功能（无敌模式、踢出玩家等），需要将服务器配置为在Screen会话中运行。</p>
+            <p class="mb-0">
+                请在服务器上运行以下命令：<br>
+                <code class="bg-dark text-light px-2 py-1 rounded">sudo bash /home/ubuntu/bedrock-manager/setup_screen_server.sh</code>
+            </p>
+        </div>
+    </div>
+</div>
+
+<!-- 服务器状态 -->
+<div class="row mb-4">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-1">服务器状态</h6>
+                        <span id="server-status" class="badge bg-secondary">检查中...</span>
+                    </div>
+                    <i class="bi bi-server text-primary" style="font-size: 2rem;"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-1">在线玩家</h6>
+                        <span id="player-count" class="fs-4 fw-bold">0</span>
+                    </div>
+                    <i class="bi bi-people text-success" style="font-size: 2rem;"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-1">命令支持</h6>
+                        <span id="command-status" class="badge bg-secondary">检查中...</span>
+                    </div>
+                    <i class="bi bi-terminal text-info" style="font-size: 2rem;"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 玩家列表 -->
+<div class="card">
+    <div class="card-header bg-white">
+        <h5 class="mb-0"><i class="bi bi-person-lines-fill me-2"></i>在线玩家列表</h5>
+    </div>
+    <div class="card-body">
+        <div id="players-container">
+            <div class="text-center py-4">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">加载中...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 发送命令模态框 -->
+<div class="modal fade" id="commandModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-terminal me-2"></i>发送服务器命令</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">命令</label>
+                    <input type="text" class="form-control command-input" id="command-input" 
+                           placeholder="输入服务器命令，如: say Hello World">
+                    <div class="form-text">
+                        常用命令：list, say [消息], kick [玩家], effect [玩家] [效果]
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">快捷命令</label>
+                    <div class="d-flex flex-wrap gap-2">
+                        <button class="btn btn-sm btn-outline-secondary" onclick="setCommand('list')">list</button>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="setCommand('say ')">say</button>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="setCommand('time set day')">设为白天</button>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="setCommand('time set night')">设为黑夜</button>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="setCommand('weather clear')">晴天</button>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="setCommand('weather rain')">下雨</button>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="sendCommand()">
+                    <i class="bi bi-send me-1"></i>发送
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 踢出玩家确认模态框 -->
+<div class="modal fade" id="kickModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-x-circle me-2"></i>踢出玩家</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>确定要踢出玩家 <strong id="kick-player-name"></strong> 吗？</p>
+                <div class="mb-3">
+                    <label class="form-label">踢出原因（可选）</label>
+                    <input type="text" class="form-control" id="kick-reason" placeholder="输入踢出原因">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-danger" onclick="confirmKick()">
+                    <i class="bi bi-x-circle me-1"></i>踢出
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let currentPlayers = [];
+let pendingKickPlayer = null;
+
+function refreshPlayers() {
+    const icon = document.getElementById('refresh-icon');
+    icon.classList.add('spinning');
+    
+    $.get('/api/players')
+        .done(function(data) {
+            if (data.success) {
+                currentPlayers = data.players;
+                renderPlayers(data.players);
+                $('#player-count').text(data.players.length);
+                $('#command-status').removeClass('bg-secondary bg-danger').addClass('bg-success').text('可用');
+                $('#setup-alert').hide();
+            } else {
+                if (data.message && data.message.includes('screen')) {
+                    $('#setup-alert').show();
+                    $('#command-status').removeClass('bg-secondary bg-success').addClass('bg-warning').text('需配置');
+                }
+                renderPlayers([]);
+            }
+        })
+        .fail(function(xhr) {
+            console.error('获取玩家列表失败');
+            renderPlayers([]);
+        })
+        .always(function() {
+            setTimeout(() => icon.classList.remove('spinning'), 500);
+        });
+    
+    // 同时更新服务器状态
+    updateServerStatus();
+}
+
+function updateServerStatus() {
+    $.get('/api/server/status')
+        .done(function(data) {
+            if (data.running) {
+                $('#server-status').removeClass('bg-secondary bg-danger').addClass('bg-success').text('运行中');
+            } else {
+                $('#server-status').removeClass('bg-secondary bg-success').addClass('bg-danger').text('已停止');
+            }
+        })
+        .fail(function() {
+            $('#server-status').removeClass('bg-success bg-danger').addClass('bg-secondary').text('未知');
+        });
+}
+
+function renderPlayers(players) {
+    const container = document.getElementById('players-container');
+    
+    if (players.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <i class="bi bi-person-x"></i>
+                <h5>暂无在线玩家</h5>
+                <p>当有玩家加入服务器时，将在此处显示</p>
+            </div>
+        `;
+        return;
+    }
+    
+    let html = '<div class="row g-3">';
+    players.forEach(player => {
+        const initial = player.name.charAt(0).toUpperCase();
+        const joinTime = player.join_time ? new Date(player.join_time).toLocaleString('zh-CN') : '未知';
+        const invincibleBadge = player.invincible ? 
+            '<span class="invincible-badge ms-2"><i class="bi bi-shield-fill"></i> 无敌</span>' : '';
+        
+        html += `
+            <div class="col-md-6 col-lg-4">
+                <div class="card player-card h-100">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center mb-3">
+                            <div class="player-avatar me-3">${initial}</div>
+                            <div class="flex-grow-1">
+                                <div class="player-name">${escapeHtml(player.name)}${invincibleBadge}</div>
+                                <div class="player-info">
+                                    ${player.xuid ? 'XUID: ' + player.xuid : ''}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="player-info mb-3">
+                            <i class="bi bi-clock me-1"></i>加入时间: ${joinTime}
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-sm ${player.invincible ? 'toggle-invincible active' : 'btn-outline-primary toggle-invincible'}" 
+                                    onclick="toggleInvincible('${escapeHtml(player.name)}', ${!player.invincible})">
+                                <i class="bi bi-shield${player.invincible ? '-fill' : ''}"></i>
+                                ${player.invincible ? '关闭无敌' : '开启无敌'}
+                            </button>
+                            <button class="btn btn-sm btn-kick" onclick="showKickModal('${escapeHtml(player.name)}')">
+                                <i class="bi bi-x-circle"></i> 踢出
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+function toggleInvincible(playerName, enable) {
+    const action = enable ? '开启' : '关闭';
+    
+    $.ajax({
+        url: '/api/players/invincible',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({
+            player: playerName,
+            enable: enable
+        }),
+        success: function(data) {
+            if (data.success) {
+                showToast(`已${action} ${playerName} 的无敌模式`, 'success');
+                refreshPlayers();
+            } else {
+                showToast(data.message || `${action}无敌模式失败`, 'danger');
+            }
+        },
+        error: function(xhr) {
+            showToast(`${action}无敌模式失败`, 'danger');
+        }
+    });
+}
+
+function showKickModal(playerName) {
+    pendingKickPlayer = playerName;
+    document.getElementById('kick-player-name').textContent = playerName;
+    document.getElementById('kick-reason').value = '';
+    new bootstrap.Modal(document.getElementById('kickModal')).show();
+}
+
+function confirmKick() {
+    if (!pendingKickPlayer) return;
+    
+    const reason = document.getElementById('kick-reason').value || '被管理员踢出';
+    
+    $.ajax({
+        url: '/api/players/kick',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({
+            player: pendingKickPlayer,
+            reason: reason
+        }),
+        success: function(data) {
+            if (data.success) {
+                showToast(`已踢出玩家 ${pendingKickPlayer}`, 'success');
+                bootstrap.Modal.getInstance(document.getElementById('kickModal')).hide();
+                refreshPlayers();
+            } else {
+                showToast(data.message || '踢出玩家失败', 'danger');
+            }
+        },
+        error: function(xhr) {
+            showToast('踢出玩家失败', 'danger');
+        }
+    });
+    
+    pendingKickPlayer = null;
+}
+
+function setCommand(cmd) {
+    document.getElementById('command-input').value = cmd;
+    document.getElementById('command-input').focus();
+}
+
+function sendCommand() {
+    const command = document.getElementById('command-input').value.trim();
+    if (!command) {
+        showToast('请输入命令', 'warning');
+        return;
+    }
+    
+    $.ajax({
+        url: '/api/players/command',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({ command: command }),
+        success: function(data) {
+            if (data.success) {
+                showToast('命令已发送', 'success');
+                bootstrap.Modal.getInstance(document.getElementById('commandModal')).hide();
+                document.getElementById('command-input').value = '';
+            } else {
+                showToast(data.message || '发送命令失败', 'danger');
+            }
+        },
+        error: function(xhr) {
+            showToast('发送命令失败', 'danger');
+        }
+    });
+}
+
+function showToast(message, type) {
+    // 简单的提示实现
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+    alertDiv.style.cssText = 'top: 20px; right: 20px; z-index: 9999; max-width: 350px;';
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    document.body.appendChild(alertDiv);
+    
+    setTimeout(() => alertDiv.remove(), 3000);
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// 回车发送命令
+document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('command-input').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            sendCommand();
+        }
+    });
+});
+
+$(document).ready(function() {
+    refreshPlayers();
+    setInterval(refreshPlayers, 10000); // 每10秒自动刷新
+});
+</script>
+{% endblock %}

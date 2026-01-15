@@ -5,9 +5,17 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1>Addon管理</h1>
-    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#uploadModal">
-        <i class="bi bi-upload"></i> 上传Addon
-    </button>
+    <div>
+        <button class="btn btn-secondary me-2" onclick="scanAddons()">
+            <i class="bi bi-search"></i> 扫描已安装
+        </button>
+        <button class="btn btn-success me-2" onclick="enableAllAddons()" title="启用所有已禁用的addon">
+            <i class="bi bi-check-all"></i> 全部启用
+        </button>
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#uploadModal">
+            <i class="bi bi-upload"></i> 上传Addon
+        </button>
+    </div>
 </div>
 
 <!-- 上传Modal -->
@@ -31,8 +39,8 @@
                     <div class="tab-pane fade show active" id="fileUpload">
                         <form id="uploadForm" enctype="multipart/form-data">
                             <div class="mb-3">
-                                <label for="addonFile" class="form-label">选择文件 (.mcpack 或 .zip)</label>
-                                <input type="file" class="form-control" id="addonFile" name="file" accept=".mcpack,.zip" required>
+                                <label for="addonFile" class="form-label">选择文件 (.mcpack, .mcaddon 或 .zip)</label>
+                                <input type="file" class="form-control" id="addonFile" name="file" accept=".mcpack,.mcaddon,.zip" required>
                             </div>
                             <button type="submit" class="btn btn-primary">上传</button>
                         </form>
@@ -41,7 +49,11 @@
                         <form id="curseforgeForm">
                             <div class="mb-3">
                                 <label for="curseforgeUrl" class="form-label">CurseForge URL 或项目ID</label>
-                                <input type="text" class="form-control" id="curseforgeUrl" placeholder="https://www.curseforge.com/..." required>
+                                <input type="text" class="form-control" id="curseforgeUrl" placeholder="https://www.curseforge.com/minecraft-bedrock/addons/项目名" required>
+                                <small class="form-text text-muted">
+                                    需要配置CurseForge API密钥才能使用此功能。
+                                    <br>如果没有API密钥，建议直接下载文件后使用"文件上传"功能。
+                                </small>
                             </div>
                             <button type="submit" class="btn btn-primary">下载并安装</button>
                         </form>
@@ -75,15 +87,22 @@
         </div>
     </div>
 </div>
+{% endblock %}
 
+{% block extra_js %}
 <script>
 let addons = [];
 
 function loadAddons() {
-    $.get('/api/addons', function(data) {
-        addons = data;
-        renderAddons();
-    });
+    $.get('/api/addons')
+        .done(function(data) {
+            addons = data || [];
+            renderAddons();
+        })
+        .fail(function(xhr, status, error) {
+            console.error('加载Addon列表失败:', error);
+            $('#addonTableBody').html('<tr><td colspan="5" class="text-center text-danger">加载失败</td></tr>');
+        });
 }
 
 function renderAddons() {
@@ -93,112 +112,269 @@ function renderAddons() {
         return;
     }
     
-    tbody.html(addons.map(addon => `
-        <tr>
-            <td>${addon.name}</td>
-            <td><span class="badge ${addon.type === 'behavior' ? 'bg-primary' : 'bg-info'}">${addon.type === 'behavior' ? '行为包' : '资源包'}</span></td>
-            <td>${addon.version || 'N/A'}</td>
-            <td>
-                ${addon.enabled ? '<span class="badge bg-success">已启用</span>' : '<span class="badge bg-secondary">已禁用</span>'}
-            </td>
-            <td>
-                <div class="btn-group btn-group-sm">
-                    ${addon.enabled 
-                        ? `<button class="btn btn-warning" onclick="toggleAddon(${addon.id}, false)">禁用</button>`
-                        : `<button class="btn btn-success" onclick="toggleAddon(${addon.id}, true)">启用</button>`
-                    }
-                    ${addon.curseforge_id ? `<button class="btn btn-info" onclick="checkUpdate(${addon.id})">检查更新</button>` : ''}
-                    <button class="btn btn-danger" onclick="deleteAddon(${addon.id})">删除</button>
-                </div>
-            </td>
-        </tr>
-    `).join(''));
+    tbody.html(addons.map(function(addon) {
+        const typeBadge = addon.type === 'behavior' ? 'bg-primary' : 'bg-info';
+        const typeText = addon.type === 'behavior' ? '行为包' : '资源包';
+        const statusBadge = addon.enabled ? 'bg-success' : 'bg-secondary';
+        const statusText = addon.enabled ? '已启用' : '已禁用';
+        
+        let buttons = '';
+        // 启用/禁用按钮
+        if (addon.enabled) {
+            buttons += `<button class="btn btn-warning btn-sm me-1" onclick="toggleAddon(${addon.id}, false)" title="禁用">禁用</button>`;
+        } else {
+            buttons += `<button class="btn btn-success btn-sm me-1" onclick="toggleAddon(${addon.id}, true)" title="启用">启用</button>`;
+        }
+        // 检查更新按钮（仅CurseForge addon）
+        if (addon.curseforge_id) {
+            buttons += `<button class="btn btn-info btn-sm me-1" onclick="checkUpdate(${addon.id})" title="检查更新">更新</button>`;
+        }
+        // 卸载按钮（禁用并保留文件）
+        buttons += `<button class="btn btn-secondary btn-sm me-1" onclick="uninstallAddon(${addon.id})" title="卸载（禁用并保留文件）">卸载</button>`;
+        // 删除按钮（完全删除）
+        buttons += `<button class="btn btn-danger btn-sm" onclick="deleteAddon(${addon.id})" title="删除（完全删除文件）">删除</button>`;
+        
+        return `
+            <tr>
+                <td>${escapeHtml(addon.name || 'N/A')}</td>
+                <td><span class="badge ${typeBadge}">${typeText}</span></td>
+                <td>${escapeHtml(addon.version || 'N/A')}</td>
+                <td><span class="badge ${statusBadge}">${statusText}</span></td>
+                <td>
+                    <div class="btn-group btn-group-sm">
+                        ${buttons}
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join(''));
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 function toggleAddon(id, enable) {
     const action = enable ? 'enable' : 'disable';
+    const actionText = enable ? '启用' : '禁用';
+    
+    // 显示加载状态
+    const btn = event.target;
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '处理中...';
+    
     $.ajax({
-        url: `/api/addons/${id}/${action}`,
+        url: '/api/addons/' + id + '/' + action,
         method: 'PUT',
-        success: function(data) {
-            if (data.success) {
-                alert(data.message);
-                loadAddons();
-            } else {
-                alert('操作失败: ' + data.message);
-            }
+        timeout: 10000  // 10秒超时
+    })
+    .done(function(data) {
+        if (data.success) {
+            alert(actionText + '成功: ' + data.message);
+            loadAddons();
+        } else {
+            alert(actionText + '失败: ' + data.message);
+            btn.disabled = false;
+            btn.textContent = originalText;
         }
+    })
+    .fail(function(xhr, status, error) {
+        let errorMsg = actionText + '失败: ';
+        if (xhr.status === 0) {
+            errorMsg += '无法连接到服务器，请检查服务是否运行';
+        } else if (xhr.status === 404) {
+            errorMsg += 'API端点不存在';
+        } else if (xhr.status >= 500) {
+            errorMsg += '服务器错误: ' + (xhr.responseJSON?.message || error);
+        } else {
+            errorMsg += error + ' (状态码: ' + xhr.status + ')';
+        }
+        alert(errorMsg);
+        btn.disabled = false;
+        btn.textContent = originalText;
     });
 }
 
 function checkUpdate(id) {
     if (!confirm('确定要检查更新吗？')) return;
     
-    $.post(`/api/addons/${id}/update`, function(data) {
-        if (data.success) {
-            if (data.update_info) {
-                alert(`发现新版本: ${data.update_info.latest_version}\n正在更新...`);
+    $.post('/api/addons/' + id + '/update')
+        .done(function(data) {
+            if (data.success) {
+                if (data.update_info) {
+                    alert('发现新版本: ' + data.update_info.latest_version + '\n正在更新...');
+                } else {
+                    alert('已是最新版本');
+                }
+                loadAddons();
             } else {
-                alert('已是最新版本');
+                alert('检查更新失败: ' + data.message);
             }
-            loadAddons();
-        } else {
-            alert('检查更新失败: ' + data.message);
-        }
-    });
+        })
+        .fail(function(xhr, status, error) {
+            alert('检查更新失败: ' + error);
+        });
 }
 
-function deleteAddon(id) {
-    if (!confirm('确定要删除这个Addon吗？')) return;
+function scanAddons() {
+    if (!confirm('确定要扫描服务器目录中已安装的addon吗？\n这将导入所有找到的addon到数据库。')) return;
     
-    $.ajax({
-        url: `/api/addons/${id}`,
-        method: 'DELETE',
-        success: function(data) {
+    $.post('/api/addons/scan')
+        .done(function(data) {
             if (data.success) {
                 alert(data.message);
                 loadAddons();
             } else {
-                alert('删除失败: ' + data.message);
+                alert('扫描失败: ' + data.message);
             }
+        })
+        .fail(function(xhr, status, error) {
+            alert('扫描失败: ' + error);
+        });
+}
+
+function enableAllAddons() {
+    if (!confirm('确定要启用所有已禁用的addon吗？\n这将更新世界配置文件并启用所有addon。')) return;
+    
+    $.post('/api/addons/enable-all')
+        .done(function(data) {
+            if (data.success) {
+                alert(data.message);
+                loadAddons();
+            } else {
+                alert('批量启用失败: ' + data.message);
+            }
+        })
+        .fail(function(xhr, status, error) {
+            alert('批量启用失败: ' + error);
+        });
+}
+
+function uninstallAddon(id) {
+    if (!confirm('确定要卸载这个Addon吗？\n这将禁用addon但保留文件。')) return;
+    
+    // 卸载就是禁用
+    $.ajax({
+        url: '/api/addons/' + id + '/disable',
+        method: 'PUT'
+    })
+    .done(function(data) {
+        if (data.success) {
+            alert('已卸载（已禁用）');
+            loadAddons();
+        } else {
+            alert('卸载失败: ' + data.message);
         }
+    })
+    .fail(function(xhr, status, error) {
+        alert('卸载失败: ' + error);
     });
 }
 
-$('#uploadForm').on('submit', function(e) {
-    e.preventDefault();
-    const formData = new FormData();
-    formData.append('file', $('#addonFile')[0].files[0]);
+function deleteAddon(id) {
+    if (!confirm('确定要删除这个Addon吗？\n这将完全删除addon文件和数据库记录，此操作不可恢复！')) return;
     
     $.ajax({
-        url: '/api/addons/upload',
-        method: 'POST',
-        data: formData,
-        processData: false,
-        contentType: false,
-        success: function(data) {
+        url: '/api/addons/' + id,
+        method: 'DELETE'
+    })
+    .done(function(data) {
+        if (data.success) {
+            alert(data.message);
+            loadAddons();
+        } else {
+            alert('删除失败: ' + data.message);
+        }
+    })
+    .fail(function(xhr, status, error) {
+        alert('删除失败: ' + error);
+    });
+}
+
+$(document).ready(function() {
+    loadAddons();
+    
+    // 检查是否有addon，如果没有则提示扫描
+    setTimeout(function() {
+        $.get('/api/addons')
+            .done(function(addons) {
+                if (addons.length === 0) {
+                    // 延迟提示，让用户先看到界面
+                    setTimeout(function() {
+                        if (confirm('未找到addon记录。\n\n是否要扫描服务器目录中已安装的addon？\n\n这将导入所有找到的addon到数据库。')) {
+                            scanAddons();
+                        }
+                    }, 2000);
+                }
+            });
+    }, 1000);
+    
+    $('#uploadForm').on('submit', function(e) {
+        e.preventDefault();
+        const fileInput = $('#addonFile')[0];
+        if (!fileInput.files || fileInput.files.length === 0) {
+            alert('请先选择文件');
+            return;
+        }
+        
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+        
+        // 显示上传中状态
+        const submitBtn = $('#uploadForm button[type="submit"]');
+        const originalText = submitBtn.text();
+        submitBtn.prop('disabled', true).text('上传中...');
+        
+        $.ajax({
+            url: '/api/addons/upload',
+            method: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false
+        })
+        .done(function(data) {
             if (data.success) {
                 alert('上传成功！');
                 $('#uploadModal').modal('hide');
                 $('#uploadForm')[0].reset();
                 loadAddons();
             } else {
-                alert('上传失败: ' + data.message);
+                alert('上传失败: ' + (data.message || '未知错误'));
             }
-        }
+        })
+        .fail(function(xhr, status, error) {
+            let errorMsg = '上传失败: ';
+            if (xhr.responseJSON && xhr.responseJSON.message) {
+                errorMsg += xhr.responseJSON.message;
+            } else if (xhr.status === 413) {
+                errorMsg += '文件太大';
+            } else if (xhr.status === 400) {
+                errorMsg += '请求错误 (400)';
+            } else {
+                errorMsg += error + ' (状态码: ' + xhr.status + ')';
+            }
+            alert(errorMsg);
+            console.error('上传错误详情:', xhr);
+        })
+        .always(function() {
+            submitBtn.prop('disabled', false).text(originalText);
+        });
     });
-});
-
-$('#curseforgeForm').on('submit', function(e) {
-    e.preventDefault();
-    const url = $('#curseforgeUrl').val();
     
-    $.ajax({
-        url: '/api/addons/install',
-        method: 'POST',
-        contentType: 'application/json',
-        data: JSON.stringify({url: url}),
-        success: function(data) {
+    $('#curseforgeForm').on('submit', function(e) {
+        e.preventDefault();
+        const url = $('#curseforgeUrl').val();
+        
+        $.ajax({
+            url: '/api/addons/install',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({url: url})
+        })
+        .done(function(data) {
             if (data.success) {
                 alert('安装成功！');
                 $('#uploadModal').modal('hide');
@@ -207,13 +383,13 @@ $('#curseforgeForm').on('submit', function(e) {
             } else {
                 alert('安装失败: ' + data.message);
             }
-        }
+        })
+        .fail(function(xhr, status, error) {
+            alert('安装失败: ' + error);
+        });
     });
-});
-
-$(document).ready(function() {
-    loadAddons();
 });
 </script>
 {% endblock %}
+
 

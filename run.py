@@ -8,6 +8,7 @@ if __name__ == '__main__':
     app.run(
         host=Config.SERVER_HOST,
         port=Config.SERVER_PORT,
-        debug=True
+        debug=True,
+        use_reloader=False  # 禁用自动重载，避免连接中断
     )
 

@@ -41,39 +41,51 @@
         </div>
     </div>
 </div>
+{% endblock %}
 
+{% block extra_js %}
 <script>
 $(document).ready(function() {
     // 加载服务器状态
-    $.get('/api/server/status', function(data) {
-        let statusHtml = '';
-        if (data.running) {
-            statusHtml = `
-                <p class="mb-1"><span class="badge bg-success">运行中</span></p>
-                <small class="text-muted">PID: ${data.pid}</small><br>
-                <small class="text-muted">CPU: ${data.cpu_percent?.toFixed(1) || 'N/A'}%</small><br>
-                <small class="text-muted">内存: ${data.memory_mb?.toFixed(1) || 'N/A'} MB</small>
-            `;
-        } else {
-            statusHtml = '<p class="mb-0"><span class="badge bg-danger">已停止</span></p>';
-        }
-        $('#server-status').html(statusHtml);
-    });
+    $.get('/api/server/status')
+        .done(function(data) {
+            let statusHtml = '';
+            if (data.running) {
+                statusHtml = `
+                    <p class="mb-1"><span class="badge bg-success">运行中</span></p>
+                    <small class="text-muted">PID: ${data.pid || 'N/A'}</small><br>
+                    <small class="text-muted">CPU: ${data.cpu_percent ? data.cpu_percent.toFixed(1) : 'N/A'}%</small><br>
+                    <small class="text-muted">内存: ${data.memory_mb ? data.memory_mb.toFixed(1) : 'N/A'} MB</small>
+                `;
+            } else {
+                statusHtml = '<p class="mb-0"><span class="badge bg-danger">已停止</span></p>';
+            }
+            $('#server-status').html(statusHtml);
+        })
+        .fail(function(xhr, status, error) {
+            console.error('加载服务器状态失败:', error);
+            $('#server-status').html('<p class="text-danger mb-0">加载失败</p>');
+        });
     
     // 加载Addon统计
-    $.get('/api/addons', function(data) {
-        const total = data.length;
-        const enabled = data.filter(a => a.enabled).length;
-        const behavior = data.filter(a => a.type === 'behavior').length;
-        const resource = data.filter(a => a.type === 'resource').length;
-        
-        $('#addon-stats').html(`
-            <p class="mb-1">总计: <strong>${total}</strong></p>
-            <p class="mb-1">已启用: <strong>${enabled}</strong></p>
-            <p class="mb-1">行为包: <strong>${behavior}</strong></p>
-            <p class="mb-0">资源包: <strong>${resource}</strong></p>
-        `);
-    });
+    $.get('/api/addons')
+        .done(function(data) {
+            const total = data.length || 0;
+            const enabled = data.filter(a => a.enabled).length || 0;
+            const behavior = data.filter(a => a.type === 'behavior').length || 0;
+            const resource = data.filter(a => a.type === 'resource').length || 0;
+            
+            $('#addon-stats').html(`
+                <p class="mb-1">总计: <strong>${total}</strong></p>
+                <p class="mb-1">已启用: <strong>${enabled}</strong></p>
+                <p class="mb-1">行为包: <strong>${behavior}</strong></p>
+                <p class="mb-0">资源包: <strong>${resource}</strong></p>
+            `);
+        })
+        .fail(function(xhr, status, error) {
+            console.error('加载Addon统计失败:', error);
+            $('#addon-stats').html('<p class="text-danger mb-0">加载失败</p>');
+        });
 });
 </script>
 {% endblock %}

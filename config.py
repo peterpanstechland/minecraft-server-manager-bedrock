@@ -1,5 +1,9 @@
 import os
 from pathlib import Path
+from dotenv import load_dotenv
+
+# 加载.env文件（如果存在）
+load_dotenv()
 
 class Config:
     """应用配置类"""
@@ -24,7 +28,7 @@ class Config:
     # 文件上传配置
     UPLOAD_FOLDER = BASE_DIR / 'static' / 'uploads'
     MAX_UPLOAD_SIZE = 100 * 1024 * 1024  # 100MB
-    ALLOWED_EXTENSIONS = {'mcpack', 'zip'}
+    ALLOWED_EXTENSIONS = {'mcpack', 'mcaddon', 'zip'}  # mcaddon包含行为包和资源包
     
     # CurseForge API配置
     CURSEFORGE_API_KEY = os.environ.get('CURSEFORGE_API_KEY', '')
@@ -36,4 +40,21 @@ class Config:
     
     # 日志配置
     LOG_FILE = BEDROCK_SERVER_DIR / 'Dedicated_Server.txt'
+
+    # 安全配置
+    SESSION_COOKIE_SECURE = False  # 如果使用HTTPS，设置为True
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = 'Lax'
+    PERMANENT_SESSION_LIFETIME = 3600  # 1小时
+    WTF_CSRF_ENABLED = True
+    WTF_CSRF_TIME_LIMIT = None
+    
+    # Rate Limiting
+    RATELIMIT_ENABLED = True
+    RATELIMIT_STORAGE_URL = "memory://"
+    RATELIMIT_DEFAULT = "100 per hour"
+    
+    # 管理员配置（从环境变量读取）
+    ADMIN_USERNAME = os.environ.get('ADMIN_USERNAME', 'admin')
+    ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', '')  # 首次运行时需要设置
 

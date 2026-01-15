@@ -34,79 +34,99 @@
         </div>
     </div>
 </div>
+{% endblock %}
 
+{% block extra_js %}
 <script>
 function updateServerStatus() {
-    $.get('/api/server/status', function(data) {
-        let statusHtml = '';
-        if (data.running) {
-            statusHtml = `
-                <div class="mb-3">
-                    <span class="badge bg-success fs-6">运行中</span>
-                </div>
+    $.get('/api/server/status')
+        .done(function(data) {
+            let statusHtml = '';
+            if (data.running) {
+                statusHtml = `
+                    <div class="mb-3">
+                        <span class="badge bg-success fs-6">运行中</span>
+                    </div>
+                    <div class="small">
+                        <p class="mb-1"><strong>进程ID:</strong> ${data.pid || 'N/A'}</p>
+                        <p class="mb-1"><strong>CPU使用率:</strong> ${data.cpu_percent ? data.cpu_percent.toFixed(1) : 'N/A'}%</p>
+                        <p class="mb-1"><strong>内存使用:</strong> ${data.memory_mb ? data.memory_mb.toFixed(1) : 'N/A'} MB</p>
+                    </div>
+                `;
+            } else {
+                statusHtml = `
+                    <div class="mb-3">
+                        <span class="badge bg-danger fs-6">已停止</span>
+                    </div>
+                `;
+            }
+            $('#server-status-detail').html(statusHtml);
+            
+            // 更新服务器信息
+            const infoHtml = `
                 <div class="small">
-                    <p class="mb-1"><strong>进程ID:</strong> ${data.pid}</p>
-                    <p class="mb-1"><strong>CPU使用率:</strong> ${data.cpu_percent?.toFixed(1) || 'N/A'}%</p>
-                    <p class="mb-1"><strong>内存使用:</strong> ${data.memory_mb?.toFixed(1) || 'N/A'} MB</p>
+                    <p class="mb-1"><strong>服务器目录:</strong> ${data.running ? '运行中' : '未运行'}</p>
+                    <p class="mb-1"><strong>状态:</strong> ${data.status || 'N/A'}</p>
                 </div>
             `;
-        } else {
-            statusHtml = `
-                <div class="mb-3">
-                    <span class="badge bg-danger fs-6">已停止</span>
-                </div>
-            `;
-        }
-        $('#server-status-detail').html(statusHtml);
-        
-        // 更新服务器信息
-        const infoHtml = `
-            <div class="small">
-                <p class="mb-1"><strong>服务器目录:</strong> ${data.running ? '运行中' : '未运行'}</p>
-                <p class="mb-1"><strong>状态:</strong> ${data.status}</p>
-            </div>
-        `;
-        $('#server-info').html(infoHtml);
-    });
+            $('#server-info').html(infoHtml);
+        })
+        .fail(function(xhr, status, error) {
+            console.error('加载服务器状态失败:', error);
+            $('#server-status-detail').html('<p class="text-danger">加载失败</p>');
+            $('#server-info').html('<p class="text-danger">加载失败</p>');
+        });
 }
 
 function startServer() {
     if (!confirm('确定要启动服务器吗？')) return;
     
-    $.post('/api/server/start', function(data) {
-        if (data.success) {
-            alert(data.message);
-            setTimeout(updateServerStatus, 1000);
-        } else {
-            alert('启动失败: ' + data.message);
-        }
-    });
+    $.post('/api/server/start')
+        .done(function(data) {
+            if (data.success) {
+                alert(data.message);
+                setTimeout(updateServerStatus, 1000);
+            } else {
+                alert('启动失败: ' + data.message);
+            }
+        })
+        .fail(function(xhr, status, error) {
+            alert('启动失败: ' + error);
+        });
 }
 
 function stopServer() {
     if (!confirm('确定要停止服务器吗？')) return;
     
-    $.post('/api/server/stop', function(data) {
-        if (data.success) {
-            alert(data.message);
-            setTimeout(updateServerStatus, 1000);
-        } else {
-            alert('停止失败: ' + data.message);
-        }
-    });
+    $.post('/api/server/stop')
+        .done(function(data) {
+            if (data.success) {
+                alert(data.message);
+                setTimeout(updateServerStatus, 1000);
+            } else {
+                alert('停止失败: ' + data.message);
+            }
+        })
+        .fail(function(xhr, status, error) {
+            alert('停止失败: ' + error);
+        });
 }
 
 function restartServer() {
     if (!confirm('确定要重启服务器吗？这将停止当前服务器并重新启动。')) return;
     
-    $.post('/api/server/restart', function(data) {
-        if (data.success) {
-            alert(data.message);
-            setTimeout(updateServerStatus, 2000);
-        } else {
-            alert('重启失败: ' + data.message);
-        }
-    });
+    $.post('/api/server/restart')
+        .done(function(data) {
+            if (data.success) {
+                alert(data.message);
+                setTimeout(updateServerStatus, 2000);
+            } else {
+                alert('重启失败: ' + data.message);
+            }
+        })
+        .fail(function(xhr, status, error) {
+            alert('重启失败: ' + error);
+        });
 }
 
 $(document).ready(function() {

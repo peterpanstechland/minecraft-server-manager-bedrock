@@ -58,7 +58,9 @@
         </div>
     </div>
 </div>
+{% endblock %}
 
+{% block extra_js %}
 <script>
 let autoScroll = true;
 let eventSource = null;
@@ -74,7 +76,7 @@ function formatLogLine(line) {
         className = 'log-warning';
     }
     
-    return `<div class="log-line ${className}">${escapeHtml(trimmed)}</div>`;
+    return '<div class="log-line ' + className + '">' + escapeHtml(trimmed) + '</div>';
 }
 
 function escapeHtml(text) {
@@ -96,14 +98,23 @@ function addLogLine(line) {
 }
 
 function loadLogs() {
-    $.get('/api/logs?lines=100', function(data) {
-        const container = document.getElementById('logContainer');
-        container.innerHTML = data.logs.map(formatLogLine).join('');
-        
-        if (autoScroll) {
-            container.scrollTop = container.scrollHeight;
-        }
-    });
+    $.get('/api/logs?lines=100')
+        .done(function(data) {
+            const container = document.getElementById('logContainer');
+            if (data.logs && data.logs.length > 0) {
+                container.innerHTML = data.logs.map(formatLogLine).join('');
+            } else {
+                container.innerHTML = '<div class="text-muted">暂无日志</div>';
+            }
+            
+            if (autoScroll) {
+                container.scrollTop = container.scrollHeight;
+            }
+        })
+        .fail(function(xhr, status, error) {
+            console.error('加载日志失败:', error);
+            document.getElementById('logContainer').innerHTML = '<div class="text-danger">加载日志失败</div>';
+        });
 }
 
 function searchLogs() {
@@ -113,14 +124,23 @@ function searchLogs() {
         return;
     }
     
-    $.get(`/api/logs/search?q=${encodeURIComponent(query)}&lines=1000`, function(data) {
-        const container = document.getElementById('logContainer');
-        container.innerHTML = data.logs.map(formatLogLine).join('');
-        
-        if (autoScroll) {
-            container.scrollTop = 0;
-        }
-    });
+    $.get('/api/logs/search?q=' + encodeURIComponent(query) + '&lines=1000')
+        .done(function(data) {
+            const container = document.getElementById('logContainer');
+            if (data.logs && data.logs.length > 0) {
+                container.innerHTML = data.logs.map(formatLogLine).join('');
+            } else {
+                container.innerHTML = '<div class="text-muted">未找到匹配的日志</div>';
+            }
+            
+            if (autoScroll) {
+                container.scrollTop = 0;
+            }
+        })
+        .fail(function(xhr, status, error) {
+            console.error('搜索日志失败:', error);
+            document.getElementById('logContainer').innerHTML = '<div class="text-danger">搜索失败</div>';
+        });
 }
 
 function clearLogs() {
@@ -129,7 +149,7 @@ function clearLogs() {
 
 function toggleAutoScroll() {
     autoScroll = !autoScroll;
-    document.getElementById('autoScrollText').textContent = `自动滚动: ${autoScroll ? '开启' : '关闭'}`;
+    document.getElementById('autoScrollText').textContent = '自动滚动: ' + (autoScroll ? '开启' : '关闭');
 }
 
 function startLogStream() {
