@@ -22,6 +22,16 @@ class PlayerManager:
     # 玩家效果状态缓存 (player_name -> {effect_name: expiry_time})
     _player_effects: Dict[str, Dict[str, datetime]] = {}
     
+    # 持久化的在线玩家会话 (player_name -> session_info)
+    _online_players: Dict[str, Dict] = {}
+    
+    # 上次处理的日志位置（用于增量读取）
+    _last_log_position: int = 0
+    _last_log_inode: int = 0
+    
+    # 上次检测到的服务器启动时间
+    _last_server_start: Optional[datetime] = None
+    
     @classmethod
     def is_screen_session_active(cls) -> bool:
         """检查服务器命令通道是否可用（使用FIFO管道）"""
@@ -49,101 +59,168 @@ class PlayerManager:
             return False, f"发送命令失败: {str(e)}"
     
     @classmethod
+    def _check_server_restart(cls, log_file: Path) -> bool:
+        """检查服务器是否重启过（通过检测日志文件变化）"""
+        try:
+            stat = log_file.stat()
+            current_inode = stat.st_ino
+            
+            # 如果 inode 变化了，说明日志文件被重新创建（服务器重启）
+            if cls._last_log_inode != 0 and current_inode != cls._last_log_inode:
+                cls._last_log_inode = current_inode
+                cls._last_log_position = 0
+                return True
+            
+            cls._last_log_inode = current_inode
+            return False
+        except:
+            return False
+    
+    @classmethod
+    def _detect_server_start_from_log(cls, lines: List[str]) -> bool:
+        """从日志中检测服务器启动事件"""
+        # 检测服务器启动标志
+        start_patterns = [
+            r'Server started\.',
+            r'IPv4 supported, port:',
+            r'opening worlds',
+        ]
+        
+        for line in lines:
+            for pattern in start_patterns:
+                if re.search(pattern, line, re.IGNORECASE):
+                    return True
+        return False
+    
+    @classmethod
+    def _process_log_lines(cls, lines: List[str]):
+        """处理日志行，更新在线玩家列表"""
+        # 解析玩家加入/离开事件
+        join_pattern = re.compile(
+            r'\[(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})[:\d]*\s+INFO\]\s+Player connected:\s+(\w+),\s*xuid:\s*(\d+)',
+            re.IGNORECASE
+        )
+        leave_pattern = re.compile(
+            r'\[(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})[:\d]*\s+INFO\]\s+Player disconnected:\s+(\w+)',
+            re.IGNORECASE
+        )
+        
+        # 备用模式
+        join_pattern_alt = re.compile(r'Player\s+connected:\s+(\w+)', re.IGNORECASE)
+        leave_pattern_alt = re.compile(r'Player\s+disconnected:\s+(\w+)', re.IGNORECASE)
+        
+        for line in lines:
+            # 尝试主模式 - 玩家加入
+            join_match = join_pattern.search(line)
+            if join_match:
+                timestamp_str, player_name, xuid = join_match.groups()
+                try:
+                    timestamp = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S')
+                except ValueError:
+                    timestamp = datetime.now()
+                
+                cls._online_players[player_name] = {
+                    'name': player_name,
+                    'xuid': xuid,
+                    'join_time': timestamp,
+                }
+                continue
+            
+            # 尝试主模式 - 玩家离开
+            leave_match = leave_pattern.search(line)
+            if leave_match:
+                timestamp_str, player_name = leave_match.groups()
+                cls._online_players.pop(player_name, None)
+                cls._player_effects.pop(player_name, None)
+                continue
+            
+            # 尝试备用模式 - 玩家加入
+            join_alt = join_pattern_alt.search(line)
+            if join_alt and 'disconnected' not in line.lower():
+                player_name = join_alt.group(1)
+                if player_name not in cls._online_players:
+                    cls._online_players[player_name] = {
+                        'name': player_name,
+                        'xuid': '',
+                        'join_time': datetime.now(),
+                    }
+                continue
+            
+            # 尝试备用模式 - 玩家离开
+            leave_alt = leave_pattern_alt.search(line)
+            if leave_alt:
+                player_name = leave_alt.group(1)
+                cls._online_players.pop(player_name, None)
+                cls._player_effects.pop(player_name, None)
+    
+    @classmethod
     def get_online_players(cls) -> Tuple[bool, str, List[Dict]]:
         """
         获取在线玩家列表
-        通过解析服务器日志获取玩家加入/离开事件
+        使用增量日志读取和持久化的玩家会话跟踪
         """
-        players = []
-        player_sessions: Dict[str, Dict] = {}
-        
         log_file = Config.LOG_FILE
         if not log_file.exists():
             return True, "日志文件不存在", []
         
         try:
-            # 读取最近的日志（最多10000行）
+            # 检查服务器是否重启过
+            if cls._check_server_restart(log_file):
+                # 服务器重启，清空玩家列表
+                cls._online_players.clear()
+                cls._player_effects.clear()
+                cls._last_log_position = 0
+            
+            # 检查 FIFO 是否存在（服务器是否运行）
+            if not cls.SERVER_FIFO_PATH.exists():
+                # 服务器未运行，清空玩家列表
+                cls._online_players.clear()
+                cls._player_effects.clear()
+                cls._last_log_position = 0
+                return True, "服务器未运行", []
+            
+            # 读取新增的日志
+            file_size = log_file.stat().st_size
+            
+            if file_size < cls._last_log_position:
+                # 日志文件被截断或重置
+                cls._last_log_position = 0
+                cls._online_players.clear()
+                cls._player_effects.clear()
+            
+            new_lines = []
             with open(log_file, 'r', encoding='utf-8', errors='ignore') as f:
-                lines = f.readlines()[-10000:]
-            
-            # 解析玩家加入/离开事件
-            # Bedrock服务器日志格式示例:
-            # [2024-01-15 10:30:45:123 INFO] Player connected: PlayerName, xuid: 1234567890
-            # [2024-01-15 10:35:45:123 INFO] Player disconnected: PlayerName, xuid: 1234567890
-            
-            join_pattern = re.compile(
-                r'\[(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})[:\d]*\s+INFO\]\s+Player connected:\s+(\w+),\s*xuid:\s*(\d+)',
-                re.IGNORECASE
-            )
-            leave_pattern = re.compile(
-                r'\[(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})[:\d]*\s+INFO\]\s+Player disconnected:\s+(\w+)',
-                re.IGNORECASE
-            )
-            
-            # 备用模式（不同服务器版本可能格式不同）
-            join_pattern_alt = re.compile(
-                r'Player\s+connected:\s+(\w+)',
-                re.IGNORECASE
-            )
-            leave_pattern_alt = re.compile(
-                r'Player\s+disconnected:\s+(\w+)',
-                re.IGNORECASE
-            )
-            
-            for line in lines:
-                # 尝试主模式
-                join_match = join_pattern.search(line)
-                if join_match:
-                    timestamp_str, player_name, xuid = join_match.groups()
-                    try:
-                        timestamp = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S')
-                    except ValueError:
-                        timestamp = datetime.now()
+                if cls._last_log_position == 0:
+                    # 首次读取或重置后，读取全部日志检测服务器启动和玩家状态
+                    content = f.read()
+                    new_lines = content.split('\n')
                     
-                    player_sessions[player_name] = {
-                        'name': player_name,
-                        'xuid': xuid,
-                        'join_time': timestamp,
-                        'online': True
-                    }
-                    continue
+                    # 检测服务器启动事件，如果检测到则清空之前的玩家列表
+                    if cls._detect_server_start_from_log(new_lines):
+                        cls._online_players.clear()
+                        cls._player_effects.clear()
+                else:
+                    # 增量读取
+                    f.seek(cls._last_log_position)
+                    content = f.read()
+                    new_lines = content.split('\n')
                 
-                leave_match = leave_pattern.search(line)
-                if leave_match:
-                    timestamp_str, player_name = leave_match.groups()
-                    if player_name in player_sessions:
-                        player_sessions[player_name]['online'] = False
-                    continue
-                
-                # 尝试备用模式
-                join_alt = join_pattern_alt.search(line)
-                if join_alt and 'disconnected' not in line.lower():
-                    player_name = join_alt.group(1)
-                    if player_name not in player_sessions or not player_sessions[player_name].get('online'):
-                        player_sessions[player_name] = {
-                            'name': player_name,
-                            'xuid': '',
-                            'join_time': datetime.now(),
-                            'online': True
-                        }
-                    continue
-                
-                leave_alt = leave_pattern_alt.search(line)
-                if leave_alt:
-                    player_name = leave_alt.group(1)
-                    if player_name in player_sessions:
-                        player_sessions[player_name]['online'] = False
+                cls._last_log_position = f.tell()
             
-            # 过滤出在线玩家
-            for name, info in player_sessions.items():
-                if info.get('online', False):
-                    player_data = {
-                        'name': name,
-                        'xuid': info.get('xuid', ''),
-                        'join_time': info.get('join_time', datetime.now()).isoformat(),
-                        'invincible': cls.is_player_invincible(name)
-                    }
-                    players.append(player_data)
+            # 处理新日志行
+            if new_lines:
+                cls._process_log_lines(new_lines)
+            
+            # 构建返回的玩家列表
+            players = []
+            for name, info in cls._online_players.items():
+                player_data = {
+                    'name': name,
+                    'xuid': info.get('xuid', ''),
+                    'join_time': info.get('join_time', datetime.now()).isoformat(),
+                    'invincible': cls.is_player_invincible(name)
+                }
+                players.append(player_data)
             
             return True, f"找到 {len(players)} 个在线玩家", players
             
