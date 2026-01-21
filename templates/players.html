@@ -85,20 +85,22 @@
     .command-input {
         font-family: 'Courier New', monospace;
     }
+    .quick-cmd {
+        font-size: 0.8rem;
+        padding: 0.2rem 0.5rem;
+    }
+    .quick-cmd:hover {
+        transform: scale(1.05);
+    }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1><i class="bi bi-people-fill me-2"></i>玩家管理</h1>
-    <div>
-        <button class="btn btn-outline-primary me-2" onclick="refreshPlayers()">
-            <i class="bi bi-arrow-clockwise refresh-btn" id="refresh-icon"></i> 刷新
-        </button>
-        <button class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#commandModal">
-            <i class="bi bi-terminal"></i> 发送命令
-        </button>
-    </div>
+    <button class="btn btn-outline-primary" onclick="refreshPlayers()">
+        <i class="bi bi-arrow-clockwise refresh-btn" id="refresh-icon"></i> 刷新
+    </button>
 </div>
 
 <!-- 设置提示 -->
@@ -118,41 +120,61 @@
 
 <!-- 服务器状态 -->
 <div class="row mb-4">
-    <div class="col-md-4">
-        <div class="card">
+    <div class="col-md-3">
+        <div class="card h-100">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center">
                     <div>
                         <h6 class="text-muted mb-1">服务器状态</h6>
                         <span id="server-status" class="badge bg-secondary">检查中...</span>
                     </div>
-                    <i class="bi bi-server text-primary" style="font-size: 2rem;"></i>
+                    <i class="bi bi-server text-primary" style="font-size: 1.8rem;"></i>
                 </div>
             </div>
         </div>
     </div>
-    <div class="col-md-4">
-        <div class="card">
+    <div class="col-md-2">
+        <div class="card h-100">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center">
                     <div>
                         <h6 class="text-muted mb-1">在线玩家</h6>
                         <span id="player-count" class="fs-4 fw-bold">0</span>
                     </div>
-                    <i class="bi bi-people text-success" style="font-size: 2rem;"></i>
+                    <i class="bi bi-people text-success" style="font-size: 1.8rem;"></i>
                 </div>
             </div>
         </div>
     </div>
-    <div class="col-md-4">
-        <div class="card">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-center">
-                    <div>
-                        <h6 class="text-muted mb-1">命令支持</h6>
-                        <span id="command-status" class="badge bg-secondary">检查中...</span>
+    <div class="col-md-7">
+        <div class="card h-100">
+            <div class="card-body py-2">
+                <div class="d-flex align-items-center gap-2">
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="bi bi-terminal"></i></span>
+                        <input type="text" class="form-control command-input" id="command-input" 
+                               placeholder="输入命令后按回车发送">
+                        <button class="btn btn-primary" onclick="sendCommand()">
+                            <i class="bi bi-send"></i>
+                        </button>
                     </div>
-                    <i class="bi bi-terminal text-info" style="font-size: 2rem;"></i>
+                </div>
+                <div class="d-flex flex-wrap gap-1 mt-2">
+                    <button class="btn btn-sm btn-outline-secondary quick-cmd" onclick="quickCommand('list')">
+                        <i class="bi bi-list-ul"></i> list
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary quick-cmd" onclick="quickCommand('time set day')">
+                        <i class="bi bi-sun"></i> 白天
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary quick-cmd" onclick="quickCommand('time set night')">
+                        <i class="bi bi-moon"></i> 黑夜
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary quick-cmd" onclick="quickCommand('weather clear')">
+                        <i class="bi bi-brightness-high"></i> 晴天
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary quick-cmd" onclick="quickCommand('weather rain')">
+                        <i class="bi bi-cloud-rain"></i> 下雨
+                    </button>
                 </div>
             </div>
         </div>
@@ -170,45 +192,6 @@
                 <div class="spinner-border text-primary" role="status">
                     <span class="visually-hidden">加载中...</span>
                 </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- 发送命令模态框 -->
-<div class="modal fade" id="commandModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title"><i class="bi bi-terminal me-2"></i>发送服务器命令</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <div class="mb-3">
-                    <label class="form-label">命令</label>
-                    <input type="text" class="form-control command-input" id="command-input" 
-                           placeholder="输入服务器命令，如: say Hello World">
-                    <div class="form-text">
-                        常用命令：list, say [消息], kick [玩家], effect [玩家] [效果]
-                    </div>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">快捷命令</label>
-                    <div class="d-flex flex-wrap gap-2">
-                        <button class="btn btn-sm btn-outline-secondary" onclick="setCommand('list')">list</button>
-                        <button class="btn btn-sm btn-outline-secondary" onclick="setCommand('say ')">say</button>
-                        <button class="btn btn-sm btn-outline-secondary" onclick="setCommand('time set day')">设为白天</button>
-                        <button class="btn btn-sm btn-outline-secondary" onclick="setCommand('time set night')">设为黑夜</button>
-                        <button class="btn btn-sm btn-outline-secondary" onclick="setCommand('weather clear')">晴天</button>
-                        <button class="btn btn-sm btn-outline-secondary" onclick="setCommand('weather rain')">下雨</button>
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                <button type="button" class="btn btn-primary" onclick="sendCommand()">
-                    <i class="bi bi-send me-1"></i>发送
-                </button>
             </div>
         </div>
     </div>
@@ -409,13 +392,29 @@ function confirmKick() {
     pendingKickPlayer = null;
 }
 
-function setCommand(cmd) {
-    document.getElementById('command-input').value = cmd;
-    document.getElementById('command-input').focus();
+function quickCommand(cmd) {
+    // 快捷命令直接发送，不需要确认
+    $.ajax({
+        url: '/api/players/command',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({ command: cmd }),
+        success: function(data) {
+            if (data.success) {
+                showToast(`✓ ${cmd}`, 'success');
+            } else {
+                showToast(data.message || '命令发送失败', 'danger');
+            }
+        },
+        error: function(xhr) {
+            showToast('命令发送失败', 'danger');
+        }
+    });
 }
 
 function sendCommand() {
-    const command = document.getElementById('command-input').value.trim();
+    const input = document.getElementById('command-input');
+    const command = input.value.trim();
     if (!command) {
         showToast('请输入命令', 'warning');
         return;
@@ -428,9 +427,8 @@ function sendCommand() {
         data: JSON.stringify({ command: command }),
         success: function(data) {
             if (data.success) {
-                showToast('命令已发送', 'success');
-                bootstrap.Modal.getInstance(document.getElementById('commandModal')).hide();
-                document.getElementById('command-input').value = '';
+                showToast(`✓ ${command}`, 'success');
+                input.value = '';
             } else {
                 showToast(data.message || '发送命令失败', 'danger');
             }

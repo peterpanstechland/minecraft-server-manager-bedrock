@@ -25,6 +25,35 @@ class User(UserMixin, db.Model):
     def __repr__(self):
         return f'<User {self.username}>'
 
+class PlayerSession(db.Model):
+    """玩家会话模型 - 持久化存储玩家在线状态"""
+    __tablename__ = 'player_sessions'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    player_name = db.Column(db.String(100), nullable=False, index=True)
+    xuid = db.Column(db.String(50), nullable=True)
+    is_online = db.Column(db.Boolean, default=True, index=True)
+    join_time = db.Column(db.DateTime, default=datetime.utcnow)
+    leave_time = db.Column(db.DateTime, nullable=True)
+    server_session_id = db.Column(db.String(50), nullable=True)  # 服务器会话标识，用于区分不同服务器启动周期
+    
+    # 效果状态
+    is_invincible = db.Column(db.Boolean, default=False)
+    invincible_until = db.Column(db.DateTime, nullable=True)
+    
+    def to_dict(self):
+        return {
+            'name': self.player_name,
+            'xuid': self.xuid or '',
+            'join_time': self.join_time.isoformat() if self.join_time else None,
+            'invincible': self.is_invincible and (self.invincible_until is None or self.invincible_until > datetime.utcnow())
+        }
+    
+    def __repr__(self):
+        status = "online" if self.is_online else "offline"
+        return f'<PlayerSession {self.player_name} ({status})>'
+
+
 class Addon(db.Model):
     __tablename__ = 'addons'
     
