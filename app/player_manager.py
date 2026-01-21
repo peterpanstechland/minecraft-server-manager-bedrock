@@ -317,9 +317,6 @@ class PlayerManager:
         except Exception as e:
             print(f"Error processing log file: {e}")
     
-    # 标记是否已处理过当前会话的服务器启动事件
-    _server_start_processed: bool = False
-    
     @classmethod
     def _parse_player_events(cls, lines: List[str]):
         """解析日志行中的玩家事件"""
